@@ -47,6 +47,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <Windows.h>
 #include "engine.h"
 
 #define MAXLEN 1024;		/* default */
@@ -66,6 +67,9 @@ int main(int argc, char **argv)
 	int debug = 0;
 	int retval; /* for debug */
 	
+	HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+	DWORD dwRead;
+
 	int isExitCommand(char* str);
 
 	/* matlab.el always invokes the shell command with two
@@ -120,10 +124,17 @@ int main(int argc, char **argv)
 	fromEngine = malloc(outputMax +2);
 	engOutputBuffer(ep, fromEngine, outputMax);
 
-	
+	printf(">> "); fflush(stdout);
 	while (1) {
-	  printf(">> "); fflush(stdout);
-	  fgets(inbuf, inputMax, stdin);
+	  len = 0;
+	  /* accumulate more input if available */
+	  while (WAIT_OBJECT_0 == WaitForSingleObject(hStdIn, 250)) {
+	    ReadConsole(hStdIn, inbuf+len, inputMax-len, &dwRead, NULL);
+	    if (debug) {
+	      printf("Got %d bytes\n", dwRead);
+	    }
+	    len += dwRead;
+	  }
 	    
 	    /* On NT, something erases input and I don't know what. It
 	     might be the way comint.el is passing input to this
@@ -139,22 +150,26 @@ int main(int argc, char **argv)
 	     engine is running, so special case "exit"
 	  */
 	  
-	  retval = engEvalString(ep, inbuf);
-	  if (!strncmp(inbuf,"exit",4)) {
-	    printf("exiting\n"); fflush(stdout);
-	    exit(0);
-	  }
-	  if (fromEngine[0] == 0 ){ /*the command didn't return anything */
-	    if(debug) 
-	      printf("\ncmd returned nothing");
-	  }
-	  else {
-	    printf("%s", fromEngine); /* show matlab reply */
-	    fromEngine[0] = 0; /* clear buffer, else confusing */  
-	    if (debug) {
-	      printf("retval=%x\n");
-	      fflush(stdout);
+	  if (len) {
+	    inbuf[len-2] = 0;
+	    retval = engEvalString(ep, inbuf);
+	    if (!strncmp(inbuf,"exit",4)) {
+	      printf("exiting\n"); fflush(stdout);
+	      exit(0);
 	    }
+	    if (fromEngine[0] == 0 ){ /*the command didn't return anything */
+	      if(debug)
+		printf("\ncmd returned nothing");
+	    }
+	    else {
+	      printf("%s", fromEngine); /* show matlab reply */
+	      fromEngine[0] = 0; /* clear buffer, else confusing */
+	      if (debug) {
+		printf("retval=%x\n");
+		fflush(stdout);
+	      }
+	    }
+	    printf(">> "); fflush(stdout);
 	  }
 	}
 	exit(0);
