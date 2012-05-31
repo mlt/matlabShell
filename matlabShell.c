@@ -150,6 +150,7 @@ int main(int argc, char **argv)
 		printf("Got %d bytes\n", dwRead);
 	      }
 	    }
+	    printf(">> "); fflush(stdout); /* this makes matlab-mode happy */
 	    Sleep(250);
 	    if (!PeekNamedPipe(hStdIn, NULL, 0, NULL, &dwRead, NULL)) {
 	      printErr();
