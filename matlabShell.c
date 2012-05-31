@@ -50,6 +50,13 @@
 #include <Windows.h>
 #include "engine.h"
 
+void printErr() {
+  DWORD err = GetLastError();
+  WCHAR buffer[1024];
+  FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, LANG_SYSTEM_DEFAULT, buffer, 1024, NULL);
+  wprintf(buffer);
+}
+
 #define MAXLEN 1024;		/* default */
 int main(int argc, char **argv)
 {
@@ -69,8 +76,7 @@ int main(int argc, char **argv)
 	
 	HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD dwRead;
-
-	int isExitCommand(char* str);
+	DWORD dwRes;
 
 	/* matlab.el always invokes the shell command with two
 	   arguments, the second of which is NULL unless the lisp
@@ -124,17 +130,39 @@ int main(int argc, char **argv)
 	fromEngine = malloc(outputMax +2);
 	engOutputBuffer(ep, fromEngine, outputMax);
 
+	/* Vista+ only :( Any easy way to distinguish pipe from console??? */
+	/* if (debug) { */
+	/*   if (GetFileInformationByHandleEx(hStdIn, FileNameInfo, inbuf, inputMax)) { */
+	/*     wprintf(((PFILE_NAME_INFO)inbuf)->FileName); */
+	/*   } */
+	/* } */
+
 	printf(">> "); fflush(stdout);
+	len = 0;
 	while (1) {
-	  len = 0;
-	  /* accumulate more input if available */
-	  while (WAIT_OBJECT_0 == WaitForSingleObject(hStdIn, 250)) {
-	    ReadConsole(hStdIn, inbuf+len, inputMax-len, &dwRead, NULL);
-	    if (debug) {
-	      printf("Got %d bytes\n", dwRead);
+	  do {
+	    /* accumulate more input if available */
+	    if ( !ReadFile(hStdIn, inbuf + len, inputMax - len, &dwRead, NULL)) {
+	      printErr();
+	    } else {
+	      len += dwRead;
+	      if (debug) {
+		printf("Got %d bytes\n", dwRead);
+	      }
 	    }
-	    len += dwRead;
-	  }
+	    Sleep(250);
+	    if (!PeekNamedPipe(hStdIn, NULL, 0, NULL, &dwRead, NULL)) {
+	      printErr();
+	      dwRes = WAIT_TIMEOUT;
+	    } else {
+	      dwRes = dwRead > 0 ? WAIT_OBJECT_0 : WAIT_TIMEOUT;
+	    }
+	    if (debug) {
+	      printf("WAIT_OBJECT_0 == dwRes  = %d\n", WAIT_OBJECT_0 == dwRes);
+	    }
+	  } while (WAIT_OBJECT_0 == dwRes);
+
+	  if (!len) continue;
 	    
 	    /* On NT, something erases input and I don't know what. It
 	     might be the way comint.el is passing input to this
@@ -150,116 +178,26 @@ int main(int argc, char **argv)
 	     engine is running, so special case "exit"
 	  */
 	  
-	  if (len) {
-	    inbuf[len-2] = 0;
-	    retval = engEvalString(ep, inbuf);
-	    if (!strncmp(inbuf,"exit",4)) {
-	      printf("exiting\n"); fflush(stdout);
-	      exit(0);
-	    }
-	    if (fromEngine[0] == 0 ){ /*the command didn't return anything */
-	      if(debug)
-		printf("\ncmd returned nothing");
-	    }
-	    else {
-	      printf("%s", fromEngine); /* show matlab reply */
-	      fromEngine[0] = 0; /* clear buffer, else confusing */
-	      if (debug) {
-		printf("retval=%x\n");
-		fflush(stdout);
-	      }
-	    }
-	    printf(">> "); fflush(stdout);
+	  inbuf[len-1] = 0;
+	  retval = engEvalString(ep, inbuf);
+	  if (debug) {
+	    printf("retval=%x\n", retval);
+	    fflush(stdout);
+	  }				/* swap around to make ob-comint happy with eoe */
+	  if (retval) {
+	    printf("exiting\n"); fflush(stdout);
+	    break;
 	  }
-	}
-	exit(0);
+	  if (fromEngine[0] == 0 ){ /*the command didn't return anything */
+	    if(debug)
+	      printf("\ncmd returned nothing");
+	  }
+	  else {
+	    printf("%s", fromEngine); /* show matlab reply */
+	    fromEngine[0] = 0; /* clear buffer, else confusing */
+	  }
+	  printf(">> "); fflush(stdout);
+	  len = 0;
+        }
+        return 0;
 }
-
-
-char* downcase(char* str)
-{
-  /* downcase string in place. just touch upper case alpha chars */
-  char c; char* cp=str;
-  while ( (c = *cp)) {
-    if (c >= 'A' && c <= 'Z') *cp |= 0x20;
-    cp++;
-  }
-  return str;
-}
-
-int strncasecmp(char* a, char* b, int n) {
-  /* why isn't this in string library??? */
-  char* copya; char* copyb; int retval;
-  copya = malloc(1+strlen(a));
-  strcpy(copya, a);
-  downcase(copya);
-  copyb = malloc(1+strlen(b));
-  strcpy(copyb,b);
-  downcase(copyb);
-  retval=strncmp(copya, copyb, n);
-  free(copya); free(copyb);
-  return(retval);
-}
-
-int isExitCommand(char* str)
-{
-  return !strncasecmp(str, "exit", 4);
-}
- 
-/* usage notes
-1.0 02dec98 ram@cs.umb.edu
-Your emacs initialization should have something like this in it:
-
-(autoload 'matlab-shell "matlab" "Interactive Matlab mode." t)
-( setq matlab-shell-command "D:/users/ram/matlab/engine/matlabShell.exe"
-       matlab-shell-command-switches "500 10000"
-	 shell-command-echoes nil))
-
-matlab-shell-command should evaluate to a string with the full path name 
-of the executable of this shell.
-
-With matlab.el 2.2 you may need to have
-(load "font-lock")
-in your emacs initialization if nothing else loads it.
-The symptom of needing this will be complaints about some emacs font stuff 
-not found while loading matlab.el
-
-matlab-shell-command-switches is optional. It should evaluate to a string
-with either one or two integers. The first is the size in bytes
-of the buffer the program uses for input, and the second, if present,
-is the size of the buffer to which Matlab returns its output. If only
-the first is present, the second is set to 8 times the first. If the string
-is not set it defaults to "", and the shelll treats it as "1024 8192".
-Previous releases had "500 5000" as the suggested value, but 5000 characters
-may be rather small for output.
-
-Beginning with release 0.93, the lisp variable matlab-shell-echoes must have 
-value nil. matlab.el sets this to t, but on NT, the symptom of having this t 
-is that the command you give to matlab will not be echoed in the
-matlabShell buffer, because the matlab.el thinks that matlabShell will echo it.
-matlabShell doesn't echo in order that it can also work reasonably from a DOS 
-command window.
-
-If you want to recompile and link this code do it with the file
-linkit.bat which should look something like this:
-
-mex -f %MATLAB%\bin\msvc50engmatopts.bat matlabShell.c
-
-You can only do this with MS VC++ 5.0.
-
-Known issues using matlabShell.exe 1.0 with matlab.el version2.2
-
-     1. the function matlab-shell-run-region (C-c C-r) does not leave
-     the cursor positioned in the right place.
-
-     2. The function matlab-shell-save-and-go (C-c C-s) passes only
-     the file name to the shell, not the full pathname. Consequently,
-     if the file you are editing is not the one found on your Matlab
-     path, it is not the one executed. If the current directory is not
-     on your path at all and there is no file of the same name, Matlab
-     will complain that there is no such file. If there is one on your
-     path with the same name, you will come to believe that your edits
-     are having no effect.
-
-*/
-
