@@ -194,10 +194,21 @@ int main(int argc, char **argv)
 	      printf("\ncmd returned nothing");
 	  }
 	  else {
-	    printf("%s", fromEngine); /* show matlab reply */
+	    char fmt[10];
+	    char *next = fromEngine;
+	    const char pattern[] = "\nans =\n\n";
+	    char *pch;
+	    do {		/* answer by answer to make ob-octave happy */
+	      pch = strstr(next+1, pattern);
+	      if (pch > next) {
+		sprintf(fmt, "%%.%ds>> ", pch - next);
+		printf(fmt, next);
+		next = pch;
+	      }
+	    } while (pch != NULL);
+	    printf("%s>> ", next); fflush(stdout);
 	    fromEngine[0] = 0; /* clear buffer, else confusing */
 	  }
-	  printf(">> "); fflush(stdout);
 	  len = 0;
         }
         return 0;
