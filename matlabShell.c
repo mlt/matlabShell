@@ -5,48 +5,36 @@
  *	This is a simple program call MATLAB matlab.el
  *
  *    Copyright (c) 1998 by Robert A. Morris
+ *    Modified by Mikhail L. Titov 2012
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
+ * the Free Software Foundation; either version 3, or (at your option)
  * any later version.
- * If you did not receive a copy of the GPL you can get it at
- *     //http://www.fsf.org
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * 
- * This program is a matlab shell which will run under WindowsNT, and possibly
- * any OS, and can be invoked either from from matlab.el or a native
- * command shell.
+ * This program is a matlab shell which will run under Windows XP+
+ * and can be invoked from from matlab.el BUT NOT a native
+ * command shell to get multiline commands support.
  *
  * See the usage notes at the end of this file, or invoke it with
  * -h argument for brief usage message
 
- *      02dec98 version 1.0 ram@cs.umb.edu
- *         -remove echo; instead require 
- *              matlab-shell-process-echoes nil
- *              in matlab-shell-mode-hook
- *         -works with matlab.el ver 2.2
- *      01nov98 version 0.91 ram@cs.umb.edu
- *      Bugs fixed:
- *        "exit" command processing should be case sensitive
- *        input not echoed properly
- *        line spacing different from Matlab standard window
+ *      01jun12 version 1.1 https://github.com/mlt/matlabShell
  *
- *        - Matlab "exit" command must be all lower case, so
- *          replace isExitCommand() with simple strncmp()
- *        - echo input because something is erasing it on NT. Maybe comint.el?
- *        - make line spacing look like Matlab native shell
- *      Known deficiencies in 0.91:
+ *      Known deficiencies in 1.1:
  *      1. Matlab standard command window pops up when starting
- *      2. Matlab window doesn't exit if *matlab* buffer is killed without
- *       sending exit command to matlab from matlabShell
- *
- *	01nov98 version 0.9 ram@cs.umb.edu
- *	Known deficencies in 0.9
- *	1. should be quiet production mode and verbose C debugging modes
- *      2. Matlab Debug is untested, probably doesn't work
- *
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <signal.h>
 #include <Windows.h>
 #include "engine.h"
 
@@ -54,17 +42,24 @@
 #define LANG_SYSTEM_DEFAULT MAKELANGID(LANG_NEUTRAL, SUBLANG_SYS_DEFAULT)
 #endif /* LANG_SYSTEM_DEFAULT */
 
+char want_quit = 0;
+
+void sighandler(int s) {
+  printf("\nCaught signal %d\n", s);
+  want_quit = 1;
+}
+
 void printErr() {
   DWORD err = GetLastError();
   WCHAR buffer[1024];
-  FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, LANG_SYSTEM_DEFAULT, buffer, 1024, NULL);
+  FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, LANG_SYSTEM_DEFAULT, (LPSTR)buffer, 1024, NULL);
   wprintf(buffer);
 }
 
-#define MAXLEN 1024;		/* default */
+#define MAXLEN 10240;		/* default */
 int main(int argc, char **argv)
 {
-  char version[]="MatlabShell 1.0. 02Dec1998.\nCopyright 1998 Robert A. Morris. \nThis is Free Software licensed under the GNU Public License.";
+  char version[]="MatlabShell 1.1. 01jun2012.\nCopyright 1998 Robert A. Morris.\nModified by Mikhail L. Titov 2012\nThis is Free Software licensed under the GNU Public License.";
 	Engine *ep;
 	int inputMax; /* buffer size */
 	char *inbuf;
@@ -81,6 +76,9 @@ int main(int argc, char **argv)
 	HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD dwRead;
 	DWORD dwRes;
+
+	signal(SIGBREAK, sighandler); /* sent by FAR Manager when closed with [x] */
+	signal(SIGINT, sighandler);   /* C-c */
 
 	/* matlab.el always invokes the shell command with two
 	   arguments, the second of which is NULL unless the lisp
@@ -129,9 +127,9 @@ int main(int argc, char **argv)
 	if (!outputMax)		/* nobody set it */
 	  outputMax = 8*inputMax;
 
-	inbuf = malloc(inputMax+2); /* room for newline and \0 */
+	inbuf = malloc(inputMax);
 	outputMax = inputMax*8;
-	fromEngine = malloc(outputMax +2);
+	fromEngine = malloc(outputMax);
 	engOutputBuffer(ep, fromEngine, outputMax);
 
 	/* Vista+ only :( Any easy way to distinguish pipe from console??? */
@@ -150,9 +148,17 @@ int main(int argc, char **argv)
 	      printErr();
 	    } else {
 	      len += dwRead;
+	      if(len >= inputMax) {
+		printf("\nIncrease input buffer size!!!\n");
+		break;
+	      }
 	      if (debug) {
 		printf("Got %d bytes\n", dwRead);
 	      }
+	    }
+	    if (want_quit) {
+	      engClose(ep);
+	      return -1;
 	    }
 	    printf(">> "); fflush(stdout); /* this makes matlab-mode happy */
 	    Sleep(250);
@@ -202,7 +208,7 @@ int main(int argc, char **argv)
 	    char *next = fromEngine;
 	    const char pattern[] = "\nans =\n\n";
 	    /* pcre just for that? alternative is to depend on MS VC++ with #include <regex> */
-	    const char pattern2[] = "??? Undefined";
+	    const char pattern2[] = "??? "; /* Undefined function | Subscript indices | Don't use ??? in normal strings :-) */
 	    char *pch, *pch2;
 	    char want_eoe = 0;
 	    do {		/* answer by answer to make ob-octave happy */
