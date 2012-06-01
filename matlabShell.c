@@ -128,7 +128,6 @@ int main(int argc, char **argv)
 	  outputMax = 8*inputMax;
 
 	inbuf = malloc(inputMax);
-	outputMax = inputMax*8;
 	fromEngine = malloc(outputMax);
 	engOutputBuffer(ep, fromEngine, outputMax);
 
