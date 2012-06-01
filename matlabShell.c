@@ -197,9 +197,17 @@ int main(int argc, char **argv)
 	    char fmt[10];
 	    char *next = fromEngine;
 	    const char pattern[] = "\nans =\n\n";
-	    char *pch;
+	    /* pcre just for that? alternative is to depend on MS VC++ with #include <regex> */
+	    const char pattern2[] = "??? Undefined";
+	    char *pch, *pch2;
+	    char want_eoe = 0;
 	    do {		/* answer by answer to make ob-octave happy */
 	      pch = strstr(next+1, pattern);
+	      pch2 = strstr(next, pattern2);
+	      if (pch2) {
+		want_eoe = 1;
+		break;
+	      }
 	      if (pch > next) {
 		sprintf(fmt, "%%.%ds>> ", pch - next);
 		printf(fmt, next);
@@ -207,6 +215,9 @@ int main(int argc, char **argv)
 	      }
 	    } while (pch != NULL);
 	    printf("%s>> ", next); fflush(stdout);
+	    if (want_eoe) {
+	      printf("\nans =\n\norg_babel_eoe\n\n>> "); fflush(stdout);
+	    }
 	    fromEngine[0] = 0; /* clear buffer, else confusing */
 	  }
 	  len = 0;
