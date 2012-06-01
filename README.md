@@ -1,6 +1,4 @@
-#+Title: matlabShell notes
-
-* About
+== About
 
 These are the usage notes for matlabShell.exe, version 1.1, a matlab
 shell engine suitable for use with Windows XP+.
@@ -10,12 +8,12 @@ installation mysteries can be cleared up by doing so, thereby helping
 to determine whether any problems are with the shell installation or
 with the matlab.el installation.
 
-* dot emacs
+== dot emacs
 
 Follow matlab-mode instructions for details.
 Your emacs initialization should have something like this in it:
 
-#+begin_src elisp :eval no
+```elisp
 ;; Load CEDET.
 ;; See cedet/common/cedet.info for configuration details.
 ;; IMPORTANT: For Emacs >= 23.2, you must place this *before* any
@@ -41,9 +39,9 @@ Your emacs initialization should have something like this in it:
 
 (setq org-babel-default-header-args:matlab
   '((:results . "output") (:session . "*MATLAB*")))
-#+end_src
+```
 
-* Compilation
+== Compilation
 
 If you want to recompile and link this code do it with make provided you have gcc installed.
 Otherwise use linkit.bat if you have MS VC++ (Express) installed.
