@@ -50,6 +50,10 @@
 #include <Windows.h>
 #include "engine.h"
 
+#ifndef LANG_SYSTEM_DEFAULT /* lcc */
+#define LANG_SYSTEM_DEFAULT MAKELANGID(LANG_NEUTRAL, SUBLANG_SYS_DEFAULT)
+#endif /* LANG_SYSTEM_DEFAULT */
+
 void printErr() {
   DWORD err = GetLastError();
   WCHAR buffer[1024];
@@ -202,8 +206,8 @@ int main(int argc, char **argv)
 	    char *pch, *pch2;
 	    char want_eoe = 0;
 	    do {		/* answer by answer to make ob-octave happy */
-	      pch = strstr(next+1, pattern);
-	      pch2 = strstr(next, pattern2);
+	      pch = (char*) strstr(next+1, pattern);
+	      pch2 = (char*) strstr(next, pattern2);
 	      if (pch2) {
 		want_eoe = 1;
 		break;
