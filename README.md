@@ -30,6 +30,8 @@ Your emacs initialization should have something like this in it:
 ;; Change path
 (setq matlab-shell-command "c:/Programs/matlabshell/matlabshell.exe")
 (setq matlab-shell-command-switches '("10000" "20000"))
+;; the following is for non-session based evaluations
+(setq org-babel-matlab-shell-command "c:/Programs/matlabshell/matlabshell.cmd")
 
 ;; Have libeng.dll on your PATH or use the following
 (setenv "PATH" (concat "C:/PROGRA~1/MATLAB/R2011a/bin/win32;" (getenv "PATH")))
