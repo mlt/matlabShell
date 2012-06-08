@@ -19,7 +19,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- * 
+ *
  * This program is a matlab shell which will run under Windows XP+
  * and can be invoked from from matlab.el BUT NOT a native
  * command shell to get multiline commands support.
@@ -65,14 +65,14 @@ int main(int argc, char **argv)
 	char *inbuf;
 
 	int outputMax; /*buffer size */
-	char *fromEngine; 
+	char *fromEngine;
 
 	int noArgs;
 	int len, pos;
 
 	int debug = 0;
 	int retval; /* for debug */
-	
+
 	HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD dwRead;
 	DWORD dwRes;
@@ -105,16 +105,16 @@ int main(int argc, char **argv)
 
 	inputMax = MAXLEN;
 	outputMax = 0;
-	
+
 	/* if there are args they might be:
 	   1. one string from matlab.el with either 1 or 2 numbers
 	   2. one or two strings from a command shell invocation
 	*/
-	if ( !noArgs ){ 
+	if ( !noArgs ){
 	  inputMax = atoi(argv[1]);
-	  if (argc>2 && argv[2]) /* doesn't happen under matlab.el */
+	  if (argc>2 && argv[2]) /* DOES happen under matlab.el */
 	    outputMax = atoi(argv[2]);
-	  else { /*matlab.el passes args as a single string */
+	  else { /*matlab.el probably used to pass args as a single string long time ago */
 	    len = strlen(argv[1]);
 	    pos = strcspn(argv[1], " \t\n"); /* scan to white space */
 	    if (debug) printf("argv[1]=%s len=%d pos=%d\n", argv[1], len, pos);
@@ -145,19 +145,19 @@ int main(int argc, char **argv)
 	    /* accumulate more input if available */
 	    if ( !ReadFile(hStdIn, inbuf + len, inputMax - len, &dwRead, NULL)) {
 	      printErr();
+	      want_quit = 1;
 	    } else {
 	      len += dwRead;
 	      if(len >= inputMax) {
 		printf("\nIncrease input buffer size!!!\n");
-		break;
+		want_quit;
 	      }
-	      if (debug) {
+	      if (debug)
 		printf("Got %d bytes\n", dwRead);
-	      }
 	    }
-	    if (want_quit) {
-	      engClose(ep);
-	      return -1;
+	    if (!dwRead || want_quit) {	/* here we "catch" returns */
+	      engClose(ep);		/* from signal handler */
+	      return 0;	 /* as EIP was likely somewhere in ReadFile. Also return 0 when pipe closes */
 	    }
 	    printf(">> "); fflush(stdout); /* this makes matlab-mode happy */
 	    Sleep(250);
@@ -173,22 +173,23 @@ int main(int argc, char **argv)
 	  } while (WAIT_OBJECT_0 == dwRes);
 
 	  if (!len) continue;
-	    
+
 	    /* On NT, something erases input and I don't know what. It
 	     might be the way comint.el is passing input to this
 	     process. If this is platform dependent then other platforms
 	     may see doubled input  */
 
 	  //	  printf("%s",inbuf);   fflush(stdout);	/* re-echo input */
-	  
+
 	  /* it would be good to test retval, but on NT it seems
 	     to return non-zero whether the engine is
 	     running or not, contrary to Matlab doc.
 	     In fact, I can't figure out how to know whether the
 	     engine is running, so special case "exit"
 	  */
-	  
-	  inbuf[len-1] = 0;
+
+	  if ('\n' == inbuf[len-1])
+	    inbuf[len-1] = 0; /* Matlab on Win32 does not like last empty string */
 	  retval = engEvalString(ep, inbuf);
 	  if (debug) {
 	    printf("retval=%x\n", retval);
@@ -203,7 +204,7 @@ int main(int argc, char **argv)
 	      printf("\ncmd returned nothing");
 	  }
 	  else {
-	    char fmt[10];
+	    char fmt[15];	/* %.99,999,999s>> \x00 symbols max */
 	    char *next = fromEngine;
 	    const char pattern[] = "\nans =\n\n";
 	    /* pcre just for that? alternative is to depend on MS VC++ with #include <regex> */
@@ -219,14 +220,15 @@ int main(int argc, char **argv)
 	      }
 	      if (pch > next) {
 		sprintf(fmt, "%%.%ds>> ", pch - next);
+		if (debug)
+		  printf("%s next=%0x", fmt, next);
 		printf(fmt, next);
 		next = pch;
 	      }
 	    } while (pch != NULL);
 	    printf("%s>> ", next); fflush(stdout);
-	    if (want_eoe) {
+	    if (want_eoe)
 	      printf("\nans =\n\norg_babel_eoe\n\n>> "); fflush(stdout);
-	    }
 	    fromEngine[0] = 0; /* clear buffer, else confusing */
 	  }
 	  len = 0;
